@@ -11,7 +11,7 @@ Built and maintained by **[VettaTech](https://vettatech.ca)**: custom websites a
 | Mod | What it does |
 | --- | --- |
 | **Team Upgrades** | Money is shared in Moon Sweepers, but tools and upgrades are per player. With this mod, when anyone buys a tool, container upgrade, upgrade-tree unlock or inventory tier, the **whole crew gets it**. You pay once. |
-| **Team Vehicles** | When anyone buys a vehicle at a garage, **every crewmate gets their own** one there. When anyone upgrades a vehicle, **every vehicle of that model** gets the upgrade. (You can already drive each other's vehicles: walk up to a parked one.) Please don't demolish garages to farm the refund on free copies. |
+| **Team Vehicles** | When anyone buys a vehicle at a garage, **every crewmate gets their own** one there. When anyone upgrades a vehicle, **every vehicle of that model** gets the upgrade. (You can already drive each other's vehicles: walk up to a parked one.) Demolishing a garage refunds one of each vehicle model in it (what was actually paid for), so free copies can't be farmed for money. |
 
 ## Install
 

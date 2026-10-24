@@ -8,8 +8,9 @@
 // The host is authoritative for vehicles and sends the full vehicle list to everyone whenever it
 // changes, so this runs on the host (or solo) and clients just receive the result.
 //
-// Known limit: demolishing a garage refunds 75% of the price of every vehicle in it, including the free
-// copies. Don't demolish garages to farm money.
+// Garage refunds: demolishing a garage refunds 75% of the price of every vehicle in it. The free copies
+// would count too (free money), so the host takes back the part of a refund that came from copies:
+// a garage refunds one of each vehicle model parked there, which is what was actually paid for.
 
 using System;
 using System.Collections.Generic;
@@ -30,7 +31,7 @@ namespace TeamVehicles
 
     internal static class Mod
     {
-        public const string Version = "1.0.0";
+        public const string Version = "1.1.0";
         private const BindingFlags Inst = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
         private static FieldInfo fOwned;
@@ -38,6 +39,10 @@ namespace TeamVehicles
         private static MethodInfo mUpgradesVersionGet;
         private static MethodInfo mUpgradesVersionSet;
         private static FieldInfo fProgressDirty;
+
+        private static MethodInfo mChargeBuild;
+        private static readonly Dictionary<int, decimal> copyRefund = new Dictionary<int, decimal>();
+        private static bool settling;
 
         private static MoonWorld world;
         private static bool booted;
@@ -59,6 +64,7 @@ namespace TeamVehicles
             fOwned = t.GetField("ownedVehicles", Inst);
             mOwnedChanged = t.GetMethod("OwnedChanged", Inst, null, Type.EmptyTypes, null);
             fProgressDirty = t.GetField("progressDirty", Inst);
+            mChargeBuild = t.GetMethod("ChargeBuild", Inst, null, new[] { typeof(string), typeof(decimal) }, null);
             PropertyInfo uv = t.GetProperty("VehicleUpgradesVersion", Inst);
             mUpgradesVersionGet = uv != null ? uv.GetGetMethod(true) : null;
             mUpgradesVersionSet = uv != null ? uv.GetSetMethod(true) : null;
@@ -68,6 +74,17 @@ namespace TeamVehicles
                 return;
             }
             SceneManager.sceneLoaded += (s, m) => Hook();
+            try
+            {
+                GameObject go = new GameObject("TeamVehicles");
+                UnityEngine.Object.DontDestroyOnLoad(go);
+                go.hideFlags = HideFlags.HideAndDontSave;
+                go.AddComponent<Ticker>();
+            }
+            catch (Exception e)
+            {
+                Log("no ticker (" + e.Message + "); garage refunds are checked on money changes only.");
+            }
             MoonSteamLobby.Changed += OnCrewChanged;
             Hook();
             Log("v" + Version + " loaded.");
@@ -92,6 +109,7 @@ namespace TeamVehicles
                     world.MoneyChanged -= OnMoneyChanged;
                 }
                 world = w;
+                copyRefund.Clear();
                 if (world == null)
                 {
                     return;
@@ -113,6 +131,112 @@ namespace TeamVehicles
             if (delta < 0m)
             {
                 Sync("purchase");
+            }
+            SettleDemolishedGarages();
+        }
+
+        internal static void Tick()
+        {
+            if (world == null)
+            {
+                Hook();
+            }
+            SettleDemolishedGarages();
+        }
+
+        // Same rounding as the game's refund.
+        private static decimal Refund(decimal price)
+        {
+            return Math.Max(0m, decimal.Floor(price * 0.75m * 100m) / 100m);
+        }
+
+        private static decimal Price(int vehicle)
+        {
+            MoonWorld.GarageOffer offer = MoonWorld.GarageOfferFor(vehicle);
+            return offer != null ? offer.price : 0m;
+        }
+
+        // For every garage: how much of its demolition refund would come from free copies.
+        private static void RememberCopyRefunds(Dictionary<string, MoonOwnedVehicle> owned)
+        {
+            Dictionary<int, decimal> all = new Dictionary<int, decimal>();
+            Dictionary<int, HashSet<int>> models = new Dictionary<int, HashSet<int>>();
+            foreach (MoonOwnedVehicle v in owned.Values)
+            {
+                if (v == null)
+                {
+                    continue;
+                }
+                decimal total;
+                all.TryGetValue(v.garage, out total);
+                all[v.garage] = total + Price(v.vehicle);
+                HashSet<int> set;
+                if (!models.TryGetValue(v.garage, out set))
+                {
+                    set = new HashSet<int>();
+                    models[v.garage] = set;
+                }
+                set.Add(v.vehicle);
+            }
+            foreach (KeyValuePair<int, decimal> g in all)
+            {
+                decimal paid = 0m;
+                foreach (int m in models[g.Key])
+                {
+                    paid += Price(m);
+                }
+                decimal extra = Refund(g.Value) - Refund(paid);
+                if (extra > 0m)
+                {
+                    copyRefund[g.Key] = extra;
+                }
+                else
+                {
+                    copyRefund.Remove(g.Key);
+                }
+            }
+        }
+
+        private static void SettleDemolishedGarages()
+        {
+            if (settling || world == null || !IsAuthority || copyRefund.Count == 0 || mChargeBuild == null)
+            {
+                return;
+            }
+            settling = true;
+            try
+            {
+                List<int> gone = null;
+                foreach (int g in copyRefund.Keys)
+                {
+                    if (!world.IsGarage(g))
+                    {
+                        if (gone == null)
+                        {
+                            gone = new List<int>();
+                        }
+                        gone.Add(g);
+                    }
+                }
+                if (gone == null)
+                {
+                    return;
+                }
+                foreach (int g in gone)
+                {
+                    decimal extra = copyRefund[g];
+                    copyRefund.Remove(g);
+                    mChargeBuild.Invoke(world, new object[] { MoonCrew.LocalPlayerId, -extra });
+                    Log("garage " + g + " demolished: took back " + extra + " of refund that came from free vehicle copies.");
+                }
+            }
+            catch (Exception e)
+            {
+                Log("refund check failed: " + e.Message);
+            }
+            finally
+            {
+                settling = false;
             }
         }
 
@@ -163,6 +287,7 @@ namespace TeamVehicles
                 }
                 if (crew.Count < 2)
                 {
+                    RememberCopyRefunds(owned);
                     return;
                 }
 
@@ -248,6 +373,7 @@ namespace TeamVehicles
                     }
                 }
 
+                RememberCopyRefunds(owned);
                 if (added == 0 && upgraded == 0)
                 {
                     return;
@@ -271,6 +397,27 @@ namespace TeamVehicles
             finally
             {
                 busy = false;
+            }
+        }
+    }
+
+    public sealed class Ticker : MonoBehaviour
+    {
+        private float next;
+
+        private void Update()
+        {
+            if (Time.unscaledTime < next)
+            {
+                return;
+            }
+            next = Time.unscaledTime + 1f;
+            try
+            {
+                Mod.Tick();
+            }
+            catch
+            {
             }
         }
     }
