@@ -23,12 +23,9 @@ Output goes to `dist/`.
 
 ## Release
 
-Create a GitHub release tagged `v<Version>` (it must match `-Version`) and upload everything in `dist/`:
-
-- `MoonSweepersModsInstaller.exe`
-- `MoonSweepers.ModLoader.dll`
-- one `.dll` per mod
-- `manifest.txt` and `manifest.txt.sig`
+1. Copy everything in `dist/` (installer, loader, mod DLLs, `manifest.txt`, `manifest.txt.sig`) into `releases/v<Version>/` and add a `NOTES.md` there (first line `# Title`, the rest is the release description).
+2. Commit, then push a tag: `git tag v<Version> && git push origin v<Version>`.
+3. The **Publish release** GitHub Action creates the release and attaches the files.
 
 Loaders read `releases/latest/download/manifest.txt`, so the newest release is what players get.
 

@@ -1,0 +1,28 @@
+name: Publish release
+
+# Pushing a tag like v1.2.0 publishes releases/v1.2.0/* as a GitHub release.
+# The files there are built and signed locally with build/build.ps1 (see BUILDING.md).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          DIR="releases/${TAG}"
+          test -f "$DIR/manifest.txt" && test -f "$DIR/manifest.txt.sig"
+          grep -q "^release ${TAG#v}$" "$DIR/manifest.txt"
+          TITLE="$(head -n 1 "$DIR/NOTES.md" | sed 's/^# *//')"
+          gh release create "$TAG" "$DIR"/*.exe "$DIR"/*.dll "$DIR/manifest.txt" "$DIR/manifest.txt.sig" \
+            --title "$TITLE" --notes-file <(tail -n +2 "$DIR/NOTES.md") --verify-tag
