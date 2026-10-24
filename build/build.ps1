@@ -79,7 +79,7 @@ $libs = @("0Harmony", "MonoMod.RuntimeDetour", "MonoMod.Utils", "Mono.Cecil")
 $mods = @()
 foreach ($dir in Get-ChildItem "$root/src/Mods" -Directory | Sort-Object Name) {
     $srcs = @(Get-ChildItem $dir.FullName -Filter *.cs -Recurse | ForEach-Object FullName)
-    Compile $dir.Name $srcs ($sys + $unity + @("$Managed/Assembly-CSharp.dll", "$Managed/com.rlabrecque.steamworks.net.dll", "$Managed/UnityEngine.IMGUIModule.dll", "$Managed/UnityEngine.TextRenderingModule.dll", "$dist/MoonSweepers.ModLoader.dll", "$Cecil/0Harmony.dll")) "$dist/$($dir.Name).dll"
+    Compile $dir.Name $srcs ($sys + $unity + @("$Managed/Assembly-CSharp.dll", "$Managed/com.rlabrecque.steamworks.net.dll", "$Managed/UnityEngine.IMGUIModule.dll", "$Managed/UnityEngine.TextRenderingModule.dll", "$Managed/UnityEngine.PhysicsModule.dll", "$Managed/Unity.InputSystem.dll", "$dist/MoonSweepers.ModLoader.dll", "$Cecil/0Harmony.dll")) "$dist/$($dir.Name).dll"
     $mods += $dir.Name
 }
 

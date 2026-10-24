@@ -1,8 +1,9 @@
 # Moon Sweepers mods release manifest
 release 1.2.0
 loader 1.2.0
-mod FullRefunds.dll 58ff0430b5abb55c460f557e14a2629adebb47e82cb21d7400f210853871ae72 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/FullRefunds.dll
-mod LogisticsFix.dll 07ef62258e0073e8987ce8889007639bb39b526861245e0a9cffceb653692474 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/LogisticsFix.dll
-mod Sleep.dll dd28f8776972167c8eaf713dc25ee8b8e9fdfbb967f50cc041992246ee99efd9 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/Sleep.dll
-mod TeamUpgrades.dll f313e0e14bf3fb01920e6863dff086b4f43f3cfea2dcc3776d49adf7a2d6abe9 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamUpgrades.dll
-mod TeamVehicles.dll 490bfa96300b8907a245e7e99a2ba3cea273b8c91e98d14265f48f3d2f531fce https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamVehicles.dll
+mod FullRefunds.dll ab366e632f5e21619fe504d0f8a901754de56bc1948aa656730301b96f6b20d6 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/FullRefunds.dll
+mod LogisticsFix.dll d15317da6ec5d2d680304eb12d0865686028ca79c7f78bf3baf0036f046ea493 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/LogisticsFix.dll
+mod LunarBolt.dll 6f5820ecc8729aed6b6c0875a6f38ead773f505f1a0b102727c7302374f564d4 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/LunarBolt.dll
+mod Sleep.dll a92220bab5dbfe6e6b8229fc9bb8ba9d58fed4437b299e8acf8df86afe582bd7 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/Sleep.dll
+mod TeamUpgrades.dll adf993d3da3b25d513829d915480f8b960ff13cc2f43e328bcf140bedac930e8 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamUpgrades.dll
+mod TeamVehicles.dll c8debba68843a38f84a6715a95363a8562d52882b89133cb36ffd75947d9bcc7 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamVehicles.dll
