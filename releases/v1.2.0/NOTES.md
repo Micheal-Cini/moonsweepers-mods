@@ -1,4 +1,4 @@
-# v1.2.0: Installer, auto-updates, Team Upgrades, Team Vehicles, Sleep, Lunar Bolt, Logistics Fix, Full Refunds
+# v1.2.0: Installer, auto-updates, Team Upgrades, Team Vehicles, Sleep, Lunar Bolt, Logistics Fix, Infinite Money, Full Refunds
 
 First release with the one-click installer and automatic updates.
 
@@ -10,6 +10,7 @@ First release with the one-click installer and automatic updates.
 - **Sleep:** at night, when the whole crew lies down in bunks, the night is skipped to morning.
 - **Lunar Bolt:** a new $1,000 two-seat roadster in every garage. Fast and planted on the ground, sweeps dust. Space afterburner, J hover mode, Ctrl to fly (self-levelling), - and = for a speed limit, U for a horn.
 - **Logistics Fix:** fixes the game bug where splitters and mergers built by a crewmate who joined your world never take capsules.
+- **Infinite Money:** the wallet stays at $10,000,000. Host presses K to turn it off or on; your real earnings keep counting so you can go back to them.
 - **Full Refunds:** removing a building, garage or belt gives back 100% of what it cost instead of 75%.
 
 Mods update themselves when the game starts. After a game update, run the installer again.

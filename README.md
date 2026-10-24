@@ -15,6 +15,7 @@ Built and maintained by **[VettaTech](https://vettatech.ca)**: custom websites a
 | **Sleep** | At night, lie down in a bunk. When the whole crew is in a bunk, the night is skipped to morning. |
 | **Lunar Bolt** | A new $1,000 vehicle in every garage: an original two-seat electric roadster. Fast, planted on the ground (no more launching off bumps), and sweeps a wide strip. **Space** rocket afterburner, **J** hover mode (jets underneath), **Ctrl** take off and fly with a stabiliser that keeps it level (W nose down, S nose up, A/D bank), **-** and **=** set a speed limit, **U** for a rude horn your crew hears too. Everyone needs the mod to see it. |
 | **Logistics Fix** | Fixes a game bug: splitters and mergers built by a crewmate who joined your world never take capsules. The host renumbers them so they work (existing ones too). |
+| **Infinite Money** | The crew's wallet stays topped up at $10,000,000. The **host** presses **K** to turn it off or on (remembered per save). Your real money keeps counting in the background (earnings add to it, purchases while it's on are free), so turning it off puts the wallet back to what you actually earned. |
 | **Full Refunds** | Removing a building, garage or belt gives back **100%** of what it cost instead of 75%. |
 
 ## Install
@@ -42,7 +43,7 @@ Run the installer and choose **2**, or in Steam use *Properties > Installed File
 - **Updates are signed.** The loader only accepts a release whose `manifest.txt` is signed with the VettaTech mods key, and each file must match the SHA-256 checksum in that manifest. Downloads are only accepted from this repository.
 - To turn auto-update off, create an empty `no-update.txt` in the game's `Mods` folder.
 - Mods that change game rules (like Full Refunds) use [Harmony](https://github.com/BepInEx/HarmonyX), which the installer puts in `Mods/lib`. Those library files come from the installer, not from auto-update.
-- Logs go to the game's log: `%USERPROFILE%\AppData\LocalLow\DragDropGames\MoonSweepers\Player.log` (look for `[ModLoader]`, `[TeamUpgrades]`, `[TeamVehicles]`, `[Sleep]`, `[LunarBolt]`, `[LogisticsFix]` and `[FullRefunds]`).
+- Logs go to the game's log: `%USERPROFILE%\AppData\LocalLow\DragDropGames\MoonSweepers\Player.log` (look for `[ModLoader]`, `[TeamUpgrades]`, `[TeamVehicles]`, `[Sleep]`, `[LunarBolt]`, `[LogisticsFix]`, `[InfiniteMoney]` and `[FullRefunds]`).
 
 This project does not include or redistribute any of the game's files. Third-party libraries: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
