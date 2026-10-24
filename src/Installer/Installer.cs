@@ -240,19 +240,40 @@ namespace MoonSweepersModsInstaller
                 File.WriteAllBytes(Path.Combine(libDir, lib), Resource("modlib/" + lib));
             }
             Ok("Shared libraries installed (Harmony).");
+            // Replace mods with this installer's copies, unless auto-update already installed a newer release.
+            Version installed = null;
+            try
+            {
+                string rel = Path.Combine(modsDir, ".release");
+                if (File.Exists(rel))
+                {
+                    installed = new Version(File.ReadAllText(rel).Trim());
+                }
+            }
+            catch
+            {
+            }
+            bool keepNewer = installed != null && installed > new Version(Version);
+            string pendingDir = Path.Combine(modsDir, ".pending");
             foreach (string mod in Payload("mods/"))
             {
                 string target = Path.Combine(modsDir, mod);
                 byte[] data = Resource("mods/" + mod);
-                if (!File.Exists(target))
+                bool exists = File.Exists(target);
+                if (exists && keepNewer)
                 {
-                    File.WriteAllBytes(target, data);
-                    Ok(mod + " installed.");
+                    Ok(mod + " is already newer (v" + installed + ", from auto-update).");
+                    continue;
                 }
-                else
+                if (exists && SameBytes(File.ReadAllBytes(target), data))
                 {
-                    Ok(mod + " already installed (it keeps itself up to date).");
+                    Ok(mod + " is up to date.");
+                    continue;
                 }
+                File.WriteAllBytes(target, data);
+                DeleteIfExists(Path.Combine(pendingDir, mod));
+                DeleteIfExists(Path.Combine(pendingDir, mod + ".sha256"));
+                Ok(mod + (exists ? " updated." : " installed."));
             }
 
             Console.WriteLine();
@@ -265,6 +286,22 @@ namespace MoonSweepersModsInstaller
             Console.WriteLine();
             Color(ConsoleColor.Gray, "  Need a website or a custom app? VettaTech builds them: " + Website);
             return 0;
+        }
+
+        private static bool SameBytes(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length)
+            {
+                return false;
+            }
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (a[i] != b[i])
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static void DeleteIfExists(string path)
