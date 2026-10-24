@@ -172,7 +172,7 @@ namespace MoonSweepersModsInstaller
                 Console.WriteLine("  In Steam: right-click Moon Sweepers > Manage > Browse local files, copy the");
                 Console.WriteLine("  folder address from the top of the window and paste it here.");
                 Console.Write("  Game folder: ");
-                gameDir = (Console.ReadLine() ?? "").Trim().Trim('"');
+                gameDir = (Console.ReadLine() ?? "").Trim().Trim(new[] { '"' });
                 if (gameDir.Length == 0)
                 {
                     return 2;

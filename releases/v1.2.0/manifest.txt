@@ -1,6 +1,6 @@
 # Moon Sweepers mods release manifest
 release 1.2.0
 loader 1.2.0
-mod FullRefunds.dll 9887e67d5970ed0b22b9717a6ea03a01273d74c1352d56e0502dd06a206ee927 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/FullRefunds.dll
-mod TeamUpgrades.dll 69c7126c1c5c0641250bb51826507173d2fb8f05d9511a998b9d6b58baf4f6e0 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamUpgrades.dll
-mod TeamVehicles.dll 5f676be9e11d9aaa12c03036d1783d24361310337698ac90137b2a2124f84ef3 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamVehicles.dll
+mod FullRefunds.dll f6d5a0f64995ecee7df5a589b1a86ab3da95169e00d774d21056d81e59954381 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/FullRefunds.dll
+mod TeamUpgrades.dll 79cd4cf012536ab8e4d218f8f6fed3263fffc5eebdba6d05bc3696f78a5dc99d https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamUpgrades.dll
+mod TeamVehicles.dll 143f5a303eead0509842b3cf14e7432068873447018828bbf2a6f4f288d0b971 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamVehicles.dll

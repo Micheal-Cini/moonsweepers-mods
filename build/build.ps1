@@ -92,6 +92,26 @@ foreach ($m in $mods) { $resources["mods/$m.dll"] = "$dist/$m.dll" }
 foreach ($l in $libs) { $resources["modlib/$l.dll"] = "$Cecil/$l.dll" }
 Compile "MoonSweepersModsInstaller" @("$root/src/Installer/Installer.cs") ($sys + @("$Cecil/Mono.Cecil.dll")) "$dist/MoonSweepersModsInstaller.exe" $true $resources
 
+# 3b. The installer runs on Windows' built-in .NET Framework 4.x, but is compiled against the game's
+#     newer Mono class library. Fail the build if it calls members that .NET Framework 4.8 doesn't have.
+$netfxMissing = @(
+    "System.String::Trim(System.Char)", "System.String::TrimStart(System.Char)", "System.String::TrimEnd(System.Char)",
+    "System.String::Split(System.Char,", "System.String::Split(System.String,", "System.String::Contains(System.Char)",
+    "System.String::StartsWith(System.Char)", "System.String::EndsWith(System.Char)", "System.String::Join(System.Char,",
+    "System.String::Replace(System.String,System.String,System.StringComparison)", "System.String::Contains(System.String,System.StringComparison)",
+    "System.IO.Path::Join(", "System.IO.Path::GetRelativePath(", "KeyValuePair`2::Deconstruct(", "::TryAdd(",
+    "System.Linq.Enumerable::ToHashSet(", "System.Math::Clamp(", "System.IO.File::ReadAllTextAsync(", "System.HashCode"
+)
+Add-Type -Path "$Cecil/Mono.Cecil.dll"
+$inst = [Mono.Cecil.AssemblyDefinition]::ReadAssembly("$dist/MoonSweepersModsInstaller.exe")
+$bad = @($inst.MainModule.GetMemberReferences() | ForEach-Object { $_.FullName } | Where-Object { $f = $_; $netfxMissing | Where-Object { $f.Contains($_) } } | Sort-Object -Unique)
+$inst.Dispose()
+if ($bad.Count -gt 0) {
+    $bad | ForEach-Object { Write-Host "  not in .NET Framework 4.8: $_" -ForegroundColor Red }
+    throw "The installer uses APIs that Windows' built-in .NET Framework doesn't have."
+}
+Write-Host "installer API check passed"
+
 # 4. Signed manifest
 $lines = @("# Moon Sweepers mods release manifest", "release $Version", "loader $Version")
 foreach ($m in $mods) {
