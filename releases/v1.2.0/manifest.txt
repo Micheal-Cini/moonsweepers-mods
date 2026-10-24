@@ -1,5 +1,5 @@
 # Moon Sweepers mods release manifest
 release 1.2.0
 loader 1.2.0
-mod TeamUpgrades.dll af87fe0b9f43008ce1d2e88a5afac8e9f3133b9733622259107b0db68185af96 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamUpgrades.dll
-mod TeamVehicles.dll 2ea9a5029b65d2a3de0a877010e993539e599a627bfb5cd14b2fe7870a6e55f9 https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamVehicles.dll
+mod TeamUpgrades.dll ff8bb9bf770d9c1ce46c06897c1ef7a38373b4f989445f623cb3deb122100fdc https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamUpgrades.dll
+mod TeamVehicles.dll 7f2e8732a1e1365e35a10063a5f2fd69bc779aeef25a393de32a912ed7d5466d https://github.com/Micheal-Cini/moonsweepers-mods/releases/download/v1.2.0/TeamVehicles.dll

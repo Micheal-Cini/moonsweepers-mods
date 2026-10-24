@@ -52,6 +52,7 @@ namespace MoonModLoader
                 modsDir = Path.GetFullPath(Path.Combine(Path.Combine(Application.dataPath, ".."), "Mods"));
                 Directory.CreateDirectory(modsDir);
                 Log("Moon Sweepers Mod Loader v" + Version + " (by VettaTech)");
+                AppDomain.CurrentDomain.AssemblyResolve += ResolveLib;
                 ApplyPending();
                 LoadMods();
                 if (!File.Exists(Path.Combine(modsDir, "no-update.txt")))
@@ -71,6 +72,28 @@ namespace MoonModLoader
         public static void Log(string msg)
         {
             Debug.Log("[ModLoader] " + msg);
+        }
+
+        // Shared libraries for mods (for example Harmony) live in Mods/lib.
+        private static Assembly ResolveLib(object sender, ResolveEventArgs e)
+        {
+            try
+            {
+                string name = new AssemblyName(e.Name).Name;
+                foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (a.GetName().Name == name)
+                    {
+                        return a;
+                    }
+                }
+                string path = Path.Combine(Path.Combine(modsDir, "lib"), name + ".dll");
+                return File.Exists(path) ? Assembly.LoadFrom(path) : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static string PendingDir
