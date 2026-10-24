@@ -1,0 +1,6 @@
+dist/
+*PRIVATE*
+*.private.xml
+# Never commit game files
+Assembly-CSharp*.dll
+Managed/
