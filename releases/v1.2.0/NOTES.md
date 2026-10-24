@@ -1,4 +1,4 @@
-# v1.2.0: Installer, auto-updates, Team Upgrades, Team Vehicles, Full Refunds
+# v1.2.0: Installer, auto-updates, Team Upgrades, Team Vehicles, Sleep, Full Refunds
 
 First release with the one-click installer and automatic updates.
 
@@ -6,7 +6,8 @@ First release with the one-click installer and automatic updates.
 
 **Mods**
 - **Team Upgrades:** tools, container upgrades, upgrade-tree unlocks and inventory tier are shared by the whole crew. Buy once, everyone has it.
-- **Team Vehicles:** buy a vehicle and every crewmate gets their own one at that garage; upgrade a vehicle and every vehicle of that model gets it. Garage refunds only count vehicles that were actually bought.
+- **Team Vehicles:** buy a vehicle and every crewmate gets their own; upgrade a vehicle and every vehicle of that model gets it. Linked garages: every garage holds your whole fleet, and demolishing a garage never loses vehicles.
+- **Sleep:** at night, when the whole crew lies down in bunks, the night is skipped to morning.
 - **Full Refunds:** removing a building, garage or belt gives back 100% of what it cost instead of 75%.
 
 Mods update themselves when the game starts. After a game update, run the installer again.

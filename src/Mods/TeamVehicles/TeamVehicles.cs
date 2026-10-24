@@ -1,24 +1,27 @@
-// Team Vehicles: a Moon Sweepers mod by VettaTech (https://vettatech.ca)
+// Team Vehicles (with Linked Garages): a Moon Sweepers mod by VettaTech (https://vettatech.ca)
 // Source: https://github.com/Micheal-Cini/moonsweepers-mods
 //
-// - When anyone buys a vehicle at a garage, every crewmate in the lobby gets their own one there.
-// - When anyone upgrades a vehicle, every vehicle of the same model gets that upgrade.
+// - Shared fleet: when anyone buys a vehicle, every crewmate in the lobby gets their own one.
+// - Shared upgrades: upgrade a vehicle and every vehicle of that model gets it.
+// - Linked garages: every garage holds everyone's whole fleet, so you can call any of your vehicles
+//   out of any garage. Demolishing a garage doesn't lose vehicles: they're still in your other garages,
+//   and if no garage is left, they're waiting in the next one you build. (A garage's refund now covers
+//   just the building, since you keep the vehicles.)
 // (Crewmates can already drive each other's vehicles in the base game: walk up to a parked one.)
 //
-// The host is authoritative for vehicles and sends the full vehicle list to everyone whenever it
-// changes, so this runs on the host and clients just receive the result.
-//
-// Garage refunds: demolishing a garage refunds 75% (100% with Full Refunds) of every vehicle in it, and free copies
-// would count too. When the host sees a garage that had copies get demolished AND a refund paid out,
-// it takes back the part of the refund that came from copies, so a garage refunds one of each model
-// parked there (what was actually paid for).
+// The game keeps vehicles per garage and forgets vehicles whose garage is gone, so this mod keeps a
+// small fleet list in the save folder (vettatech-fleet.txt): who owns which models, with upgrades.
+// The host is authoritative for vehicles and sends the full vehicle list to everyone, so this runs on
+// the host (or solo) and clients just receive the result.
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
+using System.Text;
+using HarmonyLib;
 using MoonCleaners;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace TeamVehicles
 {
@@ -39,15 +42,15 @@ namespace TeamVehicles
 
     internal static class Mod
     {
-        public const string Version = "1.1.0";
+        public const string Version = "2.0.0";
         private const BindingFlags Inst = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
         private const int MaxVehicles = 2000;          // the game refuses saves with more than 4096
         private const float SyncEvery = 2f;
-        private const float RefundWindow = 15f;
+        private const string FleetFile = "vettatech-fleet.txt";
 
         private static FieldInfo fOwned;
+        private static FieldInfo fDepots;
         private static MethodInfo mOwnedChanged;
-        private static MethodInfo mChargeBuild;
         private static MethodInfo mUpgradesVersionGet;
         private static MethodInfo mUpgradesVersionSet;
         private static PropertyInfo pOwnedRevision;
@@ -59,10 +62,10 @@ namespace TeamVehicles
         private static int seenRevision = int.MinValue;
         private static float nextSync;
 
-        // garage id -> extra refund its free copies would add (only garages that exist right now)
-        private static readonly Dictionary<int, decimal> copyRefund = new Dictionary<int, decimal>();
-        // recent positive money changes (time, amount): a demolition refund shows up as one of these
-        private static readonly List<KeyValuePair<float, decimal>> recentIncome = new List<KeyValuePair<float, decimal>>();
+        // owner -> model -> upgrades; persisted per save so vehicles survive having no garage
+        private static readonly Dictionary<string, Dictionary<int, byte[]>> fleet = new Dictionary<string, Dictionary<int, byte[]>>(StringComparer.Ordinal);
+        private static string fleetDir;
+        private static string fleetSaved;
 
         internal static void Log(string msg)
         {
@@ -78,33 +81,39 @@ namespace TeamVehicles
             booted = true;
             Type t = typeof(MoonWorld);
             fOwned = t.GetField("ownedVehicles", Inst);
+            fDepots = t.GetField("depots", Inst);
             mOwnedChanged = t.GetMethod("OwnedChanged", Inst, null, Type.EmptyTypes, null);
-            mChargeBuild = t.GetMethod("ChargeBuild", Inst, null, new[] { typeof(string), typeof(decimal) }, null);
             fProgressDirty = t.GetField("progressDirty", Inst);
             pOwnedRevision = t.GetProperty("OwnedVehiclesRevision", Inst);
             PropertyInfo uv = t.GetProperty("VehicleUpgradesVersion", Inst);
             mUpgradesVersionGet = uv != null ? uv.GetGetMethod(true) : null;
             mUpgradesVersionSet = uv != null ? uv.GetSetMethod(true) : null;
-            if (fOwned == null || mOwnedChanged == null)
+            MethodInfo price = t.GetMethod("GarageVehiclesPrice", Inst, null, new[] { typeof(int) }, null);
+            MethodInfo canRemove = t.GetMethod("CanRemoveStructure", Inst);
+            if (fOwned == null || fDepots == null || mOwnedChanged == null || price == null)
             {
                 Log("could not find the game's vehicle data (game updated?). Mod is off.");
                 return;
+            }
+            Harmony h = new Harmony("vettatech.moonsweepers.teamvehicles");
+            // Vehicles are kept when a garage goes, so its refund must not pay for them.
+            h.Patch(price, prefix: new HarmonyMethod(typeof(Patches), "NoVehicleRefund"));
+            if (canRemove != null)
+            {
+                h.Patch(canRemove, postfix: new HarmonyMethod(typeof(Patches), "RemovePrompt"));
             }
             GameObject go = new GameObject("TeamVehicles");
             UnityEngine.Object.DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;
             go.AddComponent<Ticker>();
-            Log("v" + Version + " loaded.");
+            Log("v" + Version + " loaded (linked garages on).");
         }
 
-        // Host of a crew, or a solo game (copies only go to lobby members, so solo only settles refunds).
-        // A lobby member who hasn't joined the host's world yet is NOT authority.
         private static bool IsAuthority
         {
             get { return !MoonCrew.Joined && (!MoonSteamLobby.InLobby || MoonSteamLobby.IsHost); }
         }
 
-        // Called by the Ticker every frame; all game access happens here, on the main thread.
         internal static void Tick()
         {
             if (world == null)
@@ -114,7 +123,12 @@ namespace TeamVehicles
                 {
                     return;
                 }
-                Attach(w);
+                world = w;
+                fleet.Clear();
+                fleetDir = null;
+                fleetSaved = null;
+                seenRevision = int.MinValue;
+                Log("attached to world.");
             }
             if (!IsAuthority)
             {
@@ -123,47 +137,126 @@ namespace TeamVehicles
             int rev = pOwnedRevision != null ? (int)pOwnedRevision.GetValue(world, null) : 0;
             if (rev != seenRevision || Time.unscaledTime >= nextSync)
             {
-                seenRevision = rev;
                 nextSync = Time.unscaledTime + SyncEvery;
                 Sync();
-                SettleDemolishedGarages();
                 seenRevision = pOwnedRevision != null ? (int)pOwnedRevision.GetValue(world, null) : 0;
             }
         }
 
-        private static void Attach(MoonWorld w)
-        {
-            world = w;
-            copyRefund.Clear();
-            recentIncome.Clear();
-            seenRevision = int.MinValue;
-            world.MoneyChanged += OnMoneyChanged;
-            Log("attached to world.");
-        }
+        // ------------------------------------------------------------------ fleet file
 
-        // Thin wrapper: never let anything escape into the game's wallet code.
-        private static void OnMoneyChanged(string player, decimal delta)
+        private static void LoadFleet()
         {
-            try
+            string dir = world.SaveDirectory;
+            if (string.IsNullOrEmpty(dir) || dir == fleetDir)
             {
-                NoteIncome(delta);
+                return;
             }
-            catch
+            fleetDir = dir;
+            fleet.Clear();
+            fleetSaved = null;
+            string path = Path.Combine(dir, FleetFile);
+            if (!File.Exists(path))
             {
+                return;
             }
-        }
-
-        private static void NoteIncome(decimal delta)
-        {
-            if (delta > 0m)
+            foreach (string line in File.ReadAllLines(path))
             {
-                recentIncome.Add(new KeyValuePair<float, decimal>(Time.unscaledTime, delta));
-                if (recentIncome.Count > 200)
+                string[] p = line.Split('\t');
+                int model;
+                if (p.Length < 3 || p[0].Length == 0 || p[0].Length > 128 || !int.TryParse(p[1], out model) || MoonWorld.GarageOfferFor(model) == null)
                 {
-                    recentIncome.RemoveRange(0, 100);
+                    continue;
+                }
+                byte[] up = new byte[7];
+                string[] u = p[2].Split(',');
+                for (int i = 0; i < up.Length && i < u.Length; i++)
+                {
+                    byte b;
+                    if (byte.TryParse(u[i], out b))
+                    {
+                        up[i] = b;
+                    }
+                }
+                Remember(p[0], model, up);
+            }
+            fleetSaved = Serialize();
+            int n = 0;
+            foreach (Dictionary<int, byte[]> m in fleet.Values)
+            {
+                n += m.Count;
+            }
+            Log("fleet list loaded: " + n + " vehicle(s).");
+        }
+
+        private static string Serialize()
+        {
+            StringBuilder sb = new StringBuilder();
+            List<string> owners = new List<string>(fleet.Keys);
+            owners.Sort(StringComparer.Ordinal);
+            foreach (string o in owners)
+            {
+                List<int> models = new List<int>(fleet[o].Keys);
+                models.Sort();
+                foreach (int m in models)
+                {
+                    byte[] u = fleet[o][m];
+                    sb.Append(o).Append('\t').Append(m).Append('\t');
+                    for (int i = 0; i < u.Length; i++)
+                    {
+                        sb.Append(i > 0 ? "," : "").Append(u[i]);
+                    }
+                    sb.Append('\n');
+                }
+            }
+            return sb.ToString();
+        }
+
+        private static void SaveFleet()
+        {
+            if (string.IsNullOrEmpty(fleetDir))
+            {
+                return;
+            }
+            string text = Serialize();
+            if (text == fleetSaved)
+            {
+                return;
+            }
+            string path = Path.Combine(fleetDir, FleetFile);
+            File.WriteAllText(path + ".tmp", text);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+            File.Move(path + ".tmp", path);
+            fleetSaved = text;
+        }
+
+        private static void Remember(string owner, int model, byte[] upgrades)
+        {
+            Dictionary<int, byte[]> mine;
+            if (!fleet.TryGetValue(owner, out mine))
+            {
+                mine = new Dictionary<int, byte[]>();
+                fleet[owner] = mine;
+            }
+            byte[] have;
+            if (!mine.TryGetValue(model, out have))
+            {
+                have = new byte[7];
+                mine[model] = have;
+            }
+            if (upgrades != null)
+            {
+                for (int i = 0; i < have.Length && i < upgrades.Length; i++)
+                {
+                    have[i] = Math.Max(have[i], upgrades[i]);
                 }
             }
         }
+
+        // ------------------------------------------------------------------ sync
 
         private static Dictionary<string, string> Crew()
         {
@@ -182,27 +275,22 @@ namespace TeamVehicles
             return crew;
         }
 
-        // Use the game's own refund calculation, so this matches whatever the game pays
-        // (75% normally, 100% with the Full Refunds mod).
-        private static MethodInfo mRefund;
-
-        private static decimal Refund(decimal price)
+        private static List<int> Garages()
         {
-            if (mRefund == null)
+            List<int> list = new List<int>();
+            var depots = (Dictionary<int, MoonDepotSnapshot>)fDepots.GetValue(world);
+            if (depots != null)
             {
-                mRefund = typeof(MoonWorld).GetMethod("Refund", BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(decimal) }, null);
+                foreach (MoonDepotSnapshot d in depots.Values)
+                {
+                    if (d != null && d.kind == 98)
+                    {
+                        list.Add(d.id);
+                    }
+                }
             }
-            if (mRefund != null)
-            {
-                return (decimal)mRefund.Invoke(null, new object[] { price });
-            }
-            return Math.Max(0m, decimal.Floor(price * 0.75m * 100m) / 100m);
-        }
-
-        private static decimal Price(int vehicle)
-        {
-            MoonWorld.GarageOffer offer = MoonWorld.GarageOfferFor(vehicle);
-            return offer != null ? offer.price : 0m;
+            list.Sort();
+            return list;
         }
 
         private static void Sync()
@@ -215,73 +303,88 @@ namespace TeamVehicles
             try
             {
                 var owned = (Dictionary<string, MoonOwnedVehicle>)fOwned.GetValue(world);
-                if (owned == null)
+                if (owned == null || world.Terrain == null)
                 {
-                    return;
+                    return; // world still loading
                 }
-                Dictionary<string, string> crew = Crew();
+                LoadFleet();
 
-                HashSet<long> garageModels = new HashSet<long>();
-                Dictionary<int, byte[]> best = new Dictionary<int, byte[]>();
+                // 1. Learn every vehicle that exists now (purchases, upgrades) into the fleet list.
                 foreach (MoonOwnedVehicle v in owned.Values)
                 {
-                    if (v == null || !world.IsGarage(v.garage))
+                    if (v != null && !string.IsNullOrEmpty(v.owner) && MoonWorld.GarageOfferFor(v.vehicle) != null)
                     {
-                        continue;
+                        Remember(v.owner, v.vehicle, v.upgrades);
                     }
-                    garageModels.Add(((long)v.garage << 32) | (uint)v.vehicle);
-                    byte[] b;
-                    if (!best.TryGetValue(v.vehicle, out b))
+                }
+
+                // 2. Shared fleet and upgrades: crewmates in the lobby get every model anyone has, and
+                //    every model gets the best upgrades anyone has on it.
+                Dictionary<string, string> crew = Crew();
+                Dictionary<int, byte[]> best = new Dictionary<int, byte[]>();
+                foreach (Dictionary<int, byte[]> mine in fleet.Values)
+                {
+                    foreach (KeyValuePair<int, byte[]> m in mine)
                     {
-                        b = new byte[7];
-                        best[v.vehicle] = b;
-                    }
-                    if (v.upgrades != null)
-                    {
-                        for (int i = 0; i < b.Length && i < v.upgrades.Length; i++)
+                        byte[] b;
+                        if (!best.TryGetValue(m.Key, out b))
                         {
-                            b[i] = Math.Max(b[i], v.upgrades[i]);
+                            b = new byte[7];
+                            best[m.Key] = b;
+                        }
+                        for (int i = 0; i < b.Length; i++)
+                        {
+                            b[i] = Math.Max(b[i], m.Value[i]);
                         }
                     }
                 }
-
-                int added = 0;
-                int upgraded = 0;
-
-                // 1. Every crewmate in the lobby gets their own of every vehicle at each existing garage.
-                if (crew.Count >= 2)
+                foreach (string p in crew.Keys)
                 {
-                    foreach (long gm in garageModels)
+                    foreach (KeyValuePair<int, byte[]> m in best)
                     {
-                        int garage = (int)(gm >> 32);
-                        int vehicle = (int)(uint)gm;
-                        foreach (KeyValuePair<string, string> p in crew)
+                        Remember(p, m.Key, m.Value);
+                    }
+                }
+                foreach (Dictionary<int, byte[]> mine in fleet.Values)
+                {
+                    foreach (KeyValuePair<int, byte[]> m in mine)
+                    {
+                        Array.Copy(best[m.Key], m.Value, 7);
+                    }
+                }
+
+                // 3. Linked garages: every garage holds every fleet vehicle.
+                int added = 0;
+                foreach (int g in Garages())
+                {
+                    foreach (KeyValuePair<string, Dictionary<int, byte[]>> o in fleet)
+                    {
+                        foreach (int model in o.Value.Keys)
                         {
-                            string key = MoonWorld.GarageVehicleStorage(garage, vehicle, p.Key);
-                            if (owned.ContainsKey(key))
+                            string key = MoonWorld.GarageVehicleStorage(g, model, o.Key);
+                            if (owned.ContainsKey(key) || owned.Count >= MaxVehicles)
                             {
                                 continue;
                             }
-                            if (owned.Count >= MaxVehicles)
-                            {
-                                break;
-                            }
+                            string name;
+                            crew.TryGetValue(o.Key, out name);
                             owned[key] = new MoonOwnedVehicle
                             {
-                                garage = garage,
-                                vehicle = vehicle,
-                                owner = p.Key,
-                                ownerName = p.Value ?? "",
+                                garage = g,
+                                vehicle = model,
+                                owner = o.Key,
+                                ownerName = name ?? "",
                                 inWorld = false,
                                 holder = "",
-                                upgrades = new byte[7]
+                                upgrades = (byte[])best[model].Clone()
                             };
                             added++;
                         }
                     }
                 }
 
-                // 2. Every vehicle of a model gets the best upgrades anyone has on that model.
+                // 4. Bring every vehicle's upgrades up to the model's best.
+                int upgraded = 0;
                 foreach (MoonOwnedVehicle v in owned.Values)
                 {
                     byte[] b;
@@ -308,7 +411,7 @@ namespace TeamVehicles
                     }
                 }
 
-                RememberCopyRefunds(owned);
+                SaveFleet();
 
                 if (added == 0 && upgraded == 0)
                 {
@@ -324,7 +427,7 @@ namespace TeamVehicles
                     mUpgradesVersionSet.Invoke(world, new object[] { ver + 1 });
                 }
                 mOwnedChanged.Invoke(world, null); // also makes the host send the vehicle list to the crew
-                Log("shared " + added + " vehicle(s), upgraded " + upgraded + " vehicle(s).");
+                Log("garages now hold " + added + " more vehicle(s); upgraded " + upgraded + ".");
             }
             catch (Exception e)
             {
@@ -335,91 +438,29 @@ namespace TeamVehicles
                 busy = false;
             }
         }
+    }
 
-        // For every garage that exists now: how much of its demolition refund would come from copies.
-        private static void RememberCopyRefunds(Dictionary<string, MoonOwnedVehicle> owned)
+    internal static class Patches
+    {
+        // MoonWorld.GarageVehiclesPrice(int garage): the vehicle part of a garage's removal refund.
+        public static bool NoVehicleRefund(ref decimal __result)
         {
-            Dictionary<int, decimal> all = new Dictionary<int, decimal>();
-            Dictionary<int, HashSet<int>> models = new Dictionary<int, HashSet<int>>();
-            foreach (MoonOwnedVehicle v in owned.Values)
-            {
-                if (v == null || !world.IsGarage(v.garage))
-                {
-                    continue;
-                }
-                decimal total;
-                all.TryGetValue(v.garage, out total);
-                all[v.garage] = total + Price(v.vehicle);
-                HashSet<int> set;
-                if (!models.TryGetValue(v.garage, out set))
-                {
-                    set = new HashSet<int>();
-                    models[v.garage] = set;
-                }
-                set.Add(v.vehicle);
-            }
-            foreach (KeyValuePair<int, decimal> g in all)
-            {
-                decimal paid = 0m;
-                foreach (int m in models[g.Key])
-                {
-                    paid += Price(m);
-                }
-                decimal extra = Refund(g.Value) - Refund(paid);
-                if (extra > 0m)
-                {
-                    copyRefund[g.Key] = extra;
-                }
-                else
-                {
-                    copyRefund.Remove(g.Key);
-                }
-            }
+            __result = 0m;
+            return false;
         }
 
-        private static void SettleDemolishedGarages()
+        // MoonWorld.CanRemoveStructure(...): fix the "everyone's vehicles there go too" warning.
+        public static void RemovePrompt(bool __result, ref string reason)
         {
-            if (world == null || copyRefund.Count == 0)
+            try
             {
-                return;
-            }
-            float now = Time.unscaledTime;
-            recentIncome.RemoveAll(x => now - x.Key > RefundWindow);
-            List<int> gone = null;
-            foreach (int g in copyRefund.Keys)
-            {
-                if (!world.IsGarage(g))
+                if (__result && reason != null && reason.Contains("(everyone's vehicles there go too)"))
                 {
-                    if (gone == null)
-                    {
-                        gone = new List<int>();
-                    }
-                    gone.Add(g);
+                    reason = reason.Replace("(everyone's vehicles there go too)", "(vehicles stay in your other garages)");
                 }
             }
-            if (gone == null)
+            catch
             {
-                return;
-            }
-            foreach (int g in gone)
-            {
-                decimal extra = copyRefund[g];
-                copyRefund.Remove(g);
-                // Only act if a refund big enough to include the copies was actually paid recently.
-                int hit = recentIncome.FindIndex(x => x.Value >= extra);
-                if (hit < 0 || mChargeBuild == null)
-                {
-                    Log("garage " + g + " is gone but no matching refund was paid; nothing to take back.");
-                    continue;
-                }
-                recentIncome.RemoveAt(hit);
-                decimal balance = world.WalletDollars(MoonCrew.LocalPlayerId);
-                decimal take = Math.Min(extra, Math.Max(0m, balance));
-                if (take > 0m)
-                {
-                    mChargeBuild.Invoke(world, new object[] { MoonCrew.LocalPlayerId, -take });
-                }
-                Log("garage " + g + " demolished: took back " + take + " of refund that came from free vehicle copies.");
             }
         }
     }
