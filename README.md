@@ -11,7 +11,8 @@ Built and maintained by **[VettaTech](https://vettatech.ca)**: custom websites a
 | Mod | What it does |
 | --- | --- |
 | **Team Upgrades** | Money is shared in Moon Sweepers, but tools and upgrades are per player. With this mod, when anyone buys a tool, container upgrade, upgrade-tree unlock or inventory tier, the **whole crew gets it**. You pay once. |
-| **Team Vehicles** | When anyone buys a vehicle at a garage, **every crewmate gets their own** one there. When anyone upgrades a vehicle, **every vehicle of that model** gets the upgrade. (You can already drive each other's vehicles: walk up to a parked one.) Demolishing a garage refunds one of each vehicle model in it (what was actually paid for), so free copies can't be farmed for money. |
+| **Team Vehicles** | When anyone buys a vehicle at a garage, **every crewmate gets their own** one there. When anyone upgrades a vehicle, **every vehicle of that model** gets the upgrade. (You can already drive each other's vehicles: walk up to a parked one.) Demolishing a garage only refunds one of each vehicle model in it (what was actually paid for), so free copies can't be farmed for money. |
+| **Full Refunds** | Removing a building, garage or belt gives back **100%** of what it cost instead of 75%. |
 
 ## Install
 
@@ -37,9 +38,10 @@ Run the installer and choose **2**, or in Steam use *Properties > Installed File
 - The **mod loader** loads every `Mods/*.dll` and calls its `ModEntry.Init()`.
 - **Updates are signed.** The loader only accepts a release whose `manifest.txt` is signed with the VettaTech mods key, and each file must match the SHA-256 checksum in that manifest. Downloads are only accepted from this repository.
 - To turn auto-update off, create an empty `no-update.txt` in the game's `Mods` folder.
-- Logs go to the game's log: `%USERPROFILE%\AppData\LocalLow\DragDropGames\MoonSweepers\Player.log` (look for `[ModLoader]` and `[TeamUpgrades]`).
+- Mods that change game rules (like Full Refunds) use [Harmony](https://github.com/BepInEx/HarmonyX), which the installer puts in `Mods/lib`. Those library files come from the installer, not from auto-update.
+- Logs go to the game's log: `%USERPROFILE%\AppData\LocalLow\DragDropGames\MoonSweepers\Player.log` (look for `[ModLoader]`, `[TeamUpgrades]`, `[TeamVehicles]` and `[FullRefunds]`).
 
-This project does not include or redistribute any of the game's files.
+This project does not include or redistribute any of the game's files. Third-party libraries: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Building
 

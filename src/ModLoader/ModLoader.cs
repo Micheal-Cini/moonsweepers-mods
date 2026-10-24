@@ -113,24 +113,42 @@ namespace MoonModLoader
                 string name = Path.GetFileName(file);
                 try
                 {
-                    if (name.EndsWith(".delete", StringComparison.OrdinalIgnoreCase))
+                    if (name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
                     {
-                        string target = Path.Combine(modsDir, name.Substring(0, name.Length - ".delete".Length));
-                        if (File.Exists(target))
+                        File.Delete(file); // interrupted download
+                    }
+                    else if (name.EndsWith(".delete", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string mod = name.Substring(0, name.Length - ".delete".Length);
+                        string target = Path.Combine(modsDir, mod);
+                        if (SafeName(mod) && File.Exists(target))
                         {
                             File.Delete(target);
+                            Log("removed " + mod);
                         }
                         File.Delete(file);
-                        Log("removed " + Path.GetFileName(target));
                     }
-                    else
+                    else if (name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
                     {
+                        string hashFile = file + ".sha256";
+                        string expected = File.Exists(hashFile) ? File.ReadAllText(hashFile).Trim() : null;
+                        if (!SafeName(name) || expected == null || Sha256(File.ReadAllBytes(file)) != expected)
+                        {
+                            File.Delete(file);
+                            if (File.Exists(hashFile))
+                            {
+                                File.Delete(hashFile);
+                            }
+                            Log("discarded a damaged update for " + name + "; it will download again.");
+                            continue;
+                        }
                         string target = Path.Combine(modsDir, name);
                         if (File.Exists(target))
                         {
                             File.Delete(target);
                         }
                         File.Move(file, target);
+                        File.Delete(hashFile);
                         Log("updated " + name);
                     }
                 }
@@ -237,6 +255,18 @@ namespace MoonModLoader
             }
         }
 
+        private static Version ParseVersion(string v)
+        {
+            try
+            {
+                return new Version(v);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static bool SafeName(string name)
         {
             return !string.IsNullOrEmpty(name)
@@ -284,6 +314,16 @@ namespace MoonModLoader
                     }
                 }
 
+                // Never go backwards: refuse a signed but older release (replayed old manifest).
+                string releaseFile = Path.Combine(modsDir, ".release");
+                Version newRel = ParseVersion(release);
+                Version oldRel = File.Exists(releaseFile) ? ParseVersion(File.ReadAllText(releaseFile).Trim()) : null;
+                if (newRel == null || (oldRel != null && newRel < oldRel))
+                {
+                    Log("update check: release " + release + " is older than the installed " + oldRel + ". Ignoring it.");
+                    return;
+                }
+
                 string pending = PendingDir;
                 int staged = 0;
                 foreach (KeyValuePair<string, string[]> f in files)
@@ -311,7 +351,14 @@ namespace MoonModLoader
                         continue;
                     }
                     Directory.CreateDirectory(pending);
-                    File.WriteAllBytes(staging, data);
+                    string tmp = staging + ".tmp";
+                    File.WriteAllBytes(tmp, data);
+                    File.WriteAllText(staging + ".sha256", f.Value[0]);
+                    if (File.Exists(staging))
+                    {
+                        File.Delete(staging);
+                    }
+                    File.Move(tmp, staging);
                     staged++;
                     Log("downloaded update for " + f.Key);
                 }
@@ -333,6 +380,7 @@ namespace MoonModLoader
                     }
                 }
                 File.WriteAllLines(managedList, new List<string>(files.Keys).ToArray());
+                File.WriteAllText(releaseFile, release);
 
                 if (staged > 0)
                 {

@@ -4,16 +4,15 @@
 // Tools, container upgrades, upgrade-tree unlocks and inventory tier are shared by the whole crew.
 // When anyone buys something, everyone gets it; money is already shared, so you pay once.
 //
-// The host is authoritative for upgrades in this game and syncs them to clients. On the host (or solo),
-// whenever upgrades change, a lobby member joins, or a world loads, every crewmate is raised to the best
-// level anyone on the crew has. Clients just receive the result. Vehicles are not shared.
+// The host is authoritative for upgrades in this game and syncs them to clients. On the host (or in a
+// solo game), every couple of seconds and right after any purchase, every crewmate is raised to the best
+// level anyone on the crew has. Clients just receive the result. (Vehicles: see the Team Vehicles mod.)
 
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using MoonCleaners;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace TeamUpgrades
 {
@@ -21,14 +20,24 @@ namespace TeamUpgrades
     {
         public static void Init()
         {
-            Loader.Boot();
+            try
+            {
+                Loader.Boot();
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[TeamUpgrades] failed to start: " + e);
+            }
         }
     }
 
     public static class Loader
     {
         public const string Version = "1.2.0";
+        private const float MergeEvery = 2f;
         private static bool booted;
+        private static MoonWorld world;
+        private static float nextMerge;
 
         public static void Boot()
         {
@@ -37,22 +46,16 @@ namespace TeamUpgrades
                 return;
             }
             booted = true;
-            try
+            if (!TeamSync.Init())
             {
-                if (!TeamSync.Init())
-                {
-                    Log("could not find the game's upgrade data (game updated?). Mod is off.");
-                    return;
-                }
-                SceneManager.sceneLoaded += OnSceneLoaded;
-                MoonSteamLobby.Changed += OnLobbyChanged;
-                Hook();
-                Log("v" + Version + " loaded.");
+                Log("could not find the game's upgrade data (game updated?). Mod is off.");
+                return;
             }
-            catch (Exception e)
-            {
-                Log("failed to start: " + e);
-            }
+            GameObject go = new GameObject("TeamUpgrades");
+            UnityEngine.Object.DontDestroyOnLoad(go);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            go.AddComponent<Ticker>();
+            Log("v" + Version + " loaded.");
         }
 
         internal static void Log(string msg)
@@ -60,78 +63,76 @@ namespace TeamUpgrades
             Debug.Log("[TeamUpgrades] " + msg);
         }
 
-        private static MoonWorld world;
-
+        // Host of a crew, or a solo game. A lobby member who hasn't joined the host's world is NOT authority.
         private static bool IsAuthority
         {
-            get { return !MoonCrew.Joined || MoonSteamLobby.IsHost; }
+            get { return !MoonCrew.Joined && (!MoonSteamLobby.InLobby || MoonSteamLobby.IsHost); }
         }
 
-        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        // Called by the Ticker every frame on the main thread.
+        internal static void Tick()
         {
-            Hook();
-        }
-
-        private static void OnLobbyChanged()
-        {
-            try
+            if (world == null)
             {
-                Hook();
-                if (world != null && IsAuthority)
+                MoonWorld w = UnityEngine.Object.FindAnyObjectByType<MoonWorld>();
+                if (w == null)
                 {
-                    TeamSync.Merge(world, "crew changed");
+                    return;
+                }
+                world = w;
+                world.UpgradesChanged += OnUpgradesChanged;
+                Log("attached to world.");
+            }
+            if (Time.unscaledTime >= nextMerge)
+            {
+                nextMerge = Time.unscaledTime + MergeEvery;
+                if (IsAuthority)
+                {
+                    TeamSync.Merge(world, "check");
                 }
             }
-            catch (Exception e)
-            {
-                Log("lobby handler error: " + e.Message);
-            }
         }
 
+        // Thin wrapper: this runs inside the game's purchase code, so nothing may escape from it.
         private static void OnUpgradesChanged(string player)
         {
             try
             {
-                if (world != null && IsAuthority)
-                {
-                    TeamSync.Merge(world, "upgrade");
-                }
+                AfterUpgrade();
             }
-            catch (Exception e)
+            catch
             {
-                Log("upgrade handler error: " + e.Message);
             }
         }
 
-        private static void Hook()
+        private static void AfterUpgrade()
+        {
+            if (world != null && IsAuthority)
+            {
+                TeamSync.Merge(world, "upgrade");
+            }
+        }
+    }
+
+    public sealed class Ticker : MonoBehaviour
+    {
+        private void Update()
         {
             try
             {
-                MoonWorld w = UnityEngine.Object.FindAnyObjectByType<MoonWorld>();
-                if (w == world)
-                {
-                    return;
-                }
-                if (world != null)
-                {
-                    world.UpgradesChanged -= OnUpgradesChanged;
-                }
-                world = w;
-                if (world == null)
-                {
-                    return;
-                }
-                world.UpgradesChanged += OnUpgradesChanged;
-                Log("attached to world.");
-                if (IsAuthority)
-                {
-                    TeamSync.Merge(world, "world loaded");
-                }
+                Loader.Tick();
             }
             catch (Exception e)
             {
-                Log("hook error: " + e.Message);
+                Loader.Log("tick error: " + e.Message);
+                enabled = false;
+                Invoke("Resume", 10f);
             }
+        }
+
+        private void Resume()
+        {
+            enabled = true;
         }
     }
 

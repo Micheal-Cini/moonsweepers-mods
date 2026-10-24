@@ -48,6 +48,12 @@ namespace MoonSweepersModsInstaller
             {
                 code = Run(args);
             }
+            catch (UnauthorizedAccessException e)
+            {
+                Error("Windows blocked access to the game folder: " + e.Message);
+                Error("Close the game, then right-click the installer and choose \"Run as administrator\".");
+                code = 5;
+            }
             catch (Exception e)
             {
                 Error("Something went wrong: " + e.Message);
@@ -87,13 +93,13 @@ namespace MoonSweepersModsInstaller
             }
         }
 
-        private static IEnumerable<string> PayloadMods()
+        private static IEnumerable<string> Payload(string prefix)
         {
             foreach (string n in Assembly.GetExecutingAssembly().GetManifestResourceNames())
             {
-                if (n.StartsWith("mods/", StringComparison.Ordinal))
+                if (n.StartsWith(prefix, StringComparison.Ordinal))
                 {
-                    yield return n.Substring(5);
+                    yield return n.Substring(prefix.Length);
                 }
             }
         }
@@ -227,7 +233,14 @@ namespace MoonSweepersModsInstaller
             Step("Installing mods...");
             string modsDir = Path.Combine(gameDir, "Mods");
             Directory.CreateDirectory(modsDir);
-            foreach (string mod in PayloadMods())
+            string libDir = Path.Combine(modsDir, "lib");
+            Directory.CreateDirectory(libDir);
+            foreach (string lib in Payload("modlib/"))
+            {
+                File.WriteAllBytes(Path.Combine(libDir, lib), Resource("modlib/" + lib));
+            }
+            Ok("Shared libraries installed (Harmony).");
+            foreach (string mod in Payload("mods/"))
             {
                 string target = Path.Combine(modsDir, mod);
                 byte[] data = Resource("mods/" + mod);
@@ -266,30 +279,38 @@ namespace MoonSweepersModsInstaller
 
         private static void CleanOldVersions(string gameDir, string managed)
         {
-            // v1.0 used BepInEx, which crashes this Unity version.
+            // v1.0 used BepInEx, which crashes this Unity version. Only remove it when it is clearly our
+            // old install (it contains our TeamUpgrades plugin); otherwise just switch the loader off.
             string winhttp = Path.Combine(gameDir, "winhttp.dll");
             string doorstop = Path.Combine(gameDir, "doorstop_config.ini");
             string bep = Path.Combine(gameDir, "BepInEx");
-            bool hadBepInEx = File.Exists(doorstop) || Directory.Exists(bep);
-            if (hadBepInEx)
+            bool ours = Directory.Exists(Path.Combine(Path.Combine(bep, "plugins"), "TeamUpgrades"));
+            if (ours)
             {
-                Step("Removing the old BepInEx version (it crashes this game)...");
+                Step("Removing the old BepInEx version of Team Upgrades (BepInEx crashes this game)...");
                 DeleteIfExists(winhttp);
                 DeleteIfExists(doorstop);
                 DeleteIfExists(Path.Combine(gameDir, "changelog.txt"));
-                DeleteIfExists(Path.Combine(gameDir, "TeamUpgrades-README.txt"));
-                if (Directory.Exists(bep))
+                try
                 {
-                    try
-                    {
-                        Directory.Delete(bep, true);
-                    }
-                    catch (Exception e)
-                    {
-                        Warn("Could not delete the BepInEx folder (" + e.Message + "). It is harmless; delete it later if you like.");
-                    }
+                    Directory.Delete(bep, true);
+                }
+                catch (Exception e)
+                {
+                    Warn("Could not delete the BepInEx folder (" + e.Message + "). It is harmless; delete it later if you like.");
                 }
                 Ok("Old BepInEx files removed.");
+            }
+            else if (File.Exists(doorstop) && File.Exists(winhttp))
+            {
+                string text = File.ReadAllText(doorstop);
+                string off = Regex.Replace(text, @"(?m)^(\s*enabled\s*=\s*)true", "${1}false");
+                if (off != text)
+                {
+                    File.WriteAllText(doorstop, off);
+                    Warn("Found BepInEx in the game folder. It crashes this version of the game, so it was switched");
+                    Warn("off (doorstop_config.ini: enabled = false). Your BepInEx files were not deleted.");
+                }
             }
             // v1.1 was a single mod dropped into Managed.
             string v11 = Path.Combine(managed, "MoonSweepers.TeamUpgrades.dll");
@@ -375,7 +396,24 @@ namespace MoonSweepersModsInstaller
             }
             foreach (string lib in libraries)
             {
-                string dir = Path.Combine(Path.Combine(Path.Combine(lib, "steamapps"), "common"), GameFolderName);
+                string apps = Path.Combine(lib, "steamapps");
+                string folder = GameFolderName;
+                string acf = Path.Combine(apps, "appmanifest_" + AppId + ".acf");
+                try
+                {
+                    if (File.Exists(acf))
+                    {
+                        Match m = Regex.Match(File.ReadAllText(acf), "\"installdir\"\\s+\"([^\"]+)\"");
+                        if (m.Success)
+                        {
+                            folder = m.Groups[1].Value;
+                        }
+                    }
+                }
+                catch
+                {
+                }
+                string dir = Path.Combine(Path.Combine(apps, "common"), folder);
                 if (File.Exists(Path.Combine(dir, GameExe)))
                 {
                     return dir;
@@ -513,7 +551,11 @@ namespace MoonSweepersModsInstaller
                 }
                 MemoryStream outStream = new MemoryStream();
                 asm.Write(outStream);
-                File.WriteAllBytes(asmPath, outStream.ToArray());
+                // Write next to it, then swap, so an interruption can't leave a half-written game file.
+                string tmp = asmPath + ".new";
+                File.WriteAllBytes(tmp, outStream.ToArray());
+                File.Copy(tmp, asmPath, true);
+                File.Delete(tmp);
             }
             return removed;
         }

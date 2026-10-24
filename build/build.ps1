@@ -4,8 +4,12 @@
 #        -PrivateKey "<path to signing key xml>" -Version 1.2.0
 #
 # Needs PowerShell 7 (it uses the Roslyn compiler that ships inside PowerShell). The game's own DLLs are
-# only used as compile references and are never copied into the release (except nothing: the installer
-# patches each player's own copy).
+# only used as compile references and are never copied into the release (the installer patches each
+# player's own copy).
+#
+# -Cecil must be a folder holding Mono.Cecil.dll 0.10.4 plus HarmonyX 2.9 (0Harmony.dll,
+# MonoMod.RuntimeDetour.dll, MonoMod.Utils.dll), e.g. BepInEx 5.4.23's core folder. Cecil is embedded in
+# the installer; Harmony and its dependencies are installed into Mods/lib for mods that patch game code.
 #
 # Output (dist/): MoonSweepersModsInstaller.exe, MoonSweepers.ModLoader.dll, <Mod>.dll, manifest.txt,
 # manifest.txt.sig
@@ -21,6 +25,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $dist = Join-Path $root "dist"
+if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 $pwshDir = Split-Path ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) -Parent
@@ -70,10 +75,11 @@ Compile "MoonSweepers.ModLoader" @($loaderSrc) ($sys + $unity) "$dist/MoonSweepe
 Remove-Item $loaderSrc
 
 # 2. Mods (each folder under src/Mods is one mod DLL)
+$libs = @("0Harmony", "MonoMod.RuntimeDetour", "MonoMod.Utils", "Mono.Cecil")
 $mods = @()
-foreach ($dir in Get-ChildItem "$root/src/Mods" -Directory) {
+foreach ($dir in Get-ChildItem "$root/src/Mods" -Directory | Sort-Object Name) {
     $srcs = @(Get-ChildItem $dir.FullName -Filter *.cs -Recurse | ForEach-Object FullName)
-    Compile $dir.Name $srcs ($sys + $unity + @("$Managed/Assembly-CSharp.dll", "$dist/MoonSweepers.ModLoader.dll")) "$dist/$($dir.Name).dll"
+    Compile $dir.Name $srcs ($sys + $unity + @("$Managed/Assembly-CSharp.dll", "$dist/MoonSweepers.ModLoader.dll", "$Cecil/0Harmony.dll")) "$dist/$($dir.Name).dll"
     $mods += $dir.Name
 }
 
@@ -83,6 +89,7 @@ $resources = @{
     "payload/MoonSweepers.ModLoader.dll" = "$dist/MoonSweepers.ModLoader.dll"
 }
 foreach ($m in $mods) { $resources["mods/$m.dll"] = "$dist/$m.dll" }
+foreach ($l in $libs) { $resources["modlib/$l.dll"] = "$Cecil/$l.dll" }
 Compile "MoonSweepersModsInstaller" @("$root/src/Installer/Installer.cs") ($sys + @("$Cecil/Mono.Cecil.dll")) "$dist/MoonSweepersModsInstaller.exe" $true $resources
 
 # 4. Signed manifest
